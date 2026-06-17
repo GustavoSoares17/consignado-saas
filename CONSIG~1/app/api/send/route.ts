@@ -1,54 +1,46 @@
-/**
- * POST /api/send
- * Endpoint interno para disparar mensagens manualmente pelo dashboard.
- *
- * Body:
- *   { to: "11987654321", type: "text", text: "Olá!" }
- *   { to: "11987654321", type: "template", template: "recuperacao_biometria_v1", params: ["João", "https://link.com"] }
- */
-
 import { NextRequest, NextResponse } from "next/server";
 import { sendText, sendTemplate } from "@/lib/meta";
+import { saveMessage } from "@/lib/store";
+
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
 
 export async function POST(req: NextRequest) {
-  // Autenticação básica por API key interna
-  const auth = req.headers.get("x-api-key");
-  if (auth !== process.env.INTERNAL_API_KEY) {
+  const apiKey = req.headers.get("x-api-key");
+  if (INTERNAL_API_KEY && apiKey !== INTERNAL_API_KEY) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
-  const body = await req.json();
-  const { to, type } = body;
-
-  if (!to || !type) {
-    return NextResponse.json({ error: "Campos obrigatórios: to, type" }, { status: 400 });
+  let body: any;
+  try { body = await req.json(); } catch {
+    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
+  const { to, type = "text", text, templateName, templateLanguage = "pt_BR", templateComponents } = body;
+
+  if (!to) return NextResponse.json({ error: "Campo 'to' obrigatório" }, { status: 400 });
+
   try {
-    if (type === "text") {
-      const { text } = body;
-      if (!text) return NextResponse.json({ error: "Campo text obrigatório" }, { status: 400 });
-
-      const result = await sendText(to, text);
-      return NextResponse.json({ ok: true, messageId: result.messages[0].id });
-    }
-
+    let result: any;
     if (type === "template") {
-      const { template, lang = "pt_BR", params = [] } = body;
-      if (!template) return NextResponse.json({ error: "Campo template obrigatório" }, { status: 400 });
-
-      const components = params.length > 0
-        ? [{ type: "body" as const, parameters: params.map((p: string) => ({ type: "text" as const, text: p })) }]
-        : [];
-
-      const result = await sendTemplate(to, template, lang, components);
-      return NextResponse.json({ ok: true, messageId: result.messages[0].id });
+      if (!templateName) return NextResponse.json({ error: "Campo 'templateName' obrigatório" }, { status: 400 });
+      result = await sendTemplate(to, templateName, templateLanguage, templateComponents);
+    } else {
+      if (!text) return NextResponse.json({ error: "Campo 'text' obrigatório" }, { status: 400 });
+      result = await sendText(to, text);
+      const msgId = result?.messages?.[0]?.id || `out_${Date.now()}`;
+      saveMessage({
+        id: msgId,
+        from: process.env.META_PHONE_NUMBER_ID || "me",
+        to,
+        body: text,
+        timestamp: Date.now(),
+        direction: "outbound",
+        status: "sent",
+      });
     }
-
-    return NextResponse.json({ error: "type deve ser 'text' ou 'template'" }, { status: 400 });
-
+    return NextResponse.json({ success: true, result });
   } catch (err: any) {
-    console.error("[/api/send] Erro:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("[Send] Erro:", err);
+    return NextResponse.json({ error: err.message || "Erro ao enviar" }, { status: 500 });
   }
 }
