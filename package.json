@@ -1,0 +1,8 @@
+{
+    "name": "consignado-saas",
+    "version": "0.1.0",
+    "private": true,
+    "dependencies": {
+          "next": "14.2.5"
+    }
+}
