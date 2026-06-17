@@ -14,6 +14,8 @@ interface Thread {
   contactName: string;
 }
 
+// Module-level store — persists within a warm serverless instance.
+// For durable storage, replace with Vercel KV: https://vercel.com/docs/storage/vercel-kv
 const threads = new Map<string, Thread>();
 
 export function saveMessage(msg: Message) {
@@ -32,11 +34,12 @@ export function getThread(phone: string): Message[] {
 
 export function getContacts() {
   const list: { phone: string; name: string; lastMessage: Message | null; unreadCount: number }[] = [];
-  for (const [phone, thread] of threads.entries()) {
-    const sorted = [...thread.messages].sort((a, b) => b.timestamp - a.timestamp);
+  // Use forEach instead of for...of to stay compatible with ES5 target
+  threads.forEach((thread, phone) => {
+    const sorted = thread.messages.slice().sort((a, b) => b.timestamp - a.timestamp);
     const unread = thread.messages.filter(m => m.direction === 'inbound' && m.status === 'received').length;
     list.push({ phone, name: thread.contactName, lastMessage: sorted[0] || null, unreadCount: unread });
-  }
+  });
   return list.sort((a, b) => (b.lastMessage?.timestamp ?? 0) - (a.lastMessage?.timestamp ?? 0));
 }
 
