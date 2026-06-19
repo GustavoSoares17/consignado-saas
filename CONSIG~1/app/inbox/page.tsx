@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
-import { sendMessageAction } from '@/app/actions';
+import { sendMessageAction, sendTemplateAction } from '@/app/actions';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Message { id:string; from:string; to:string; body:string; timestamp:number; direction:'inbound'|'outbound'; status:string; }
@@ -138,6 +138,11 @@ export default function InboxPage() {
   const [bulkSending,setBulkSending] = useState(false);
   const [bulkDone,setBulkDone] = useState(false);
   const bulkCancelRef = useRef(false);
+  const [bulkSendType,setBulkSendType] = useState<'texto'|'template'>('texto');
+  const [templates,setTemplates] = useState<{name:string;language:string;bodyText:string;varCount:number}[]>([]);
+  const [templatesLoaded,setTemplatesLoaded] = useState(false);
+  const [bulkTemplateName,setBulkTemplateName] = useState('');
+  const [bulkTemplateVars,setBulkTemplateVars] = useState<string[]>([]);
   const [inboxSearch,setInboxSearch] = useState('');
   const [inboxQueueFilter,setInboxQueueFilter] = useState('Todos');
   const [sbOpen,setSbOpen] = useState(false);
@@ -163,6 +168,8 @@ export default function InboxPage() {
 
   const loadUsers = ()=>{ fetch('/api/auth/users').then(r=>r.json()).then(d=>{ if(d.users) setUsers(d.users); }).catch(()=>{}); };
   useEffect(()=>{ if(me?.role==='admin') loadUsers(); },[me]);
+  const loadTemplates = ()=>{ fetch('/api/templates').then(r=>r.json()).then(d=>{ setTemplates(d.templates||[]); setTemplatesLoaded(true); }).catch(()=>setTemplatesLoaded(true)); };
+  useEffect(()=>{ if(me?.role==='admin') loadTemplates(); },[me]);
 
   const logout = async()=>{ await fetch('/api/auth/logout',{method:'POST'}); window.location.href='/login'; };
 
@@ -282,14 +289,33 @@ export default function InboxPage() {
     setBulkRecipients(parseBulkList(raw));
     setBulkDone(false);
   };
+  const selectBulkTemplate=(name:string)=>{
+    setBulkTemplateName(name);
+    const t=templates.find(x=>x.name===name);
+    setBulkTemplateVars(t?Array(t.varCount).fill(''):[]);
+  };
+  const bulkCanSend = bulkRecipients.length>0 && (bulkSendType==='texto'?!!bulkMsg.trim():!!bulkTemplateName);
   const bulkSend=async()=>{
-    if(!bulkMsg.trim()||bulkRecipients.length===0||bulkSending) return;
+    if(!bulkCanSend||bulkSending) return;
+    const selectedTemplate = bulkSendType==='template' ? templates.find(t=>t.name===bulkTemplateName) : undefined;
     setBulkSending(true); setBulkDone(false); bulkCancelRef.current=false;
     for(let i=0;i<bulkRecipients.length;i++){
       if(bulkCancelRef.current) break;
-      const phone=bulkRecipients[i].phone;
+      const recipient=bulkRecipients[i];
       let ok=false;
-      try { const r=await sendMessageAction(phone,bulkMsg.trim()); ok=!!r.ok; } catch { ok=false; }
+      try {
+        if(bulkSendType==='template'&&selectedTemplate){
+          const paramTexts=bulkTemplateVars.map(v=>v.replace(/\{\{nome\}\}/gi,recipient.name||recipient.phone));
+          const parameters=paramTexts.map(text=>({type:'text' as const,text}));
+          const components=parameters.length>0?[{type:'body' as const,parameters}]:[];
+          const preview=selectedTemplate.bodyText.replace(/\{\{(\d+)\}\}/g,(_m,idx)=>paramTexts[Number(idx)-1]??`{{${idx}}}`);
+          const r=await sendTemplateAction(recipient.phone,selectedTemplate.name,selectedTemplate.language,components,preview);
+          ok=!!r.ok;
+        } else {
+          const r=await sendMessageAction(recipient.phone,bulkMsg.trim());
+          ok=!!r.ok;
+        }
+      } catch { ok=false; }
       setBulkRecipients(prev=>prev.map((x,idx)=>idx===i?{...x,status:(ok?'enviado':'falhou') as BulkStatus}:x));
       await new Promise(res=>setTimeout(res,350));
     }
@@ -714,14 +740,62 @@ export default function InboxPage() {
                 </Field>
               )}
 
-              <Field label="Mensagem *">
-                <textarea value={bulkMsg} onChange={e=>setBulkMsg(e.target.value)} rows={4} placeholder="Digite a mensagem que será enviada para todos os contatos selecionados..."
-                  style={{width:'100%',background:'#f8fafc',border:`1px solid ${C.border}`,borderRadius:7,padding:'8px 10px',fontSize:12,color:C.text,outline:'none',resize:'vertical' as const,boxSizing:'border-box' as const}}/>
+              <Field label="Tipo de envio *">
+                <div style={{display:'flex',gap:6}}>
+                  <button onClick={()=>setBulkSendType('texto')}
+                    style={{flex:1,padding:'8px 0',borderRadius:7,border:`1px solid ${bulkSendType==='texto'?C.brandBlue:C.border}`,background:bulkSendType==='texto'?C.brandGreenBg:'#fff',color:bulkSendType==='texto'?C.brandGreenDark:C.text2,fontWeight:700,fontSize:12,cursor:'pointer'}}>💬 Texto livre</button>
+                  <button onClick={()=>setBulkSendType('template')}
+                    style={{flex:1,padding:'8px 0',borderRadius:7,border:`1px solid ${bulkSendType==='template'?C.brandBlue:C.border}`,background:bulkSendType==='template'?C.brandGreenBg:'#fff',color:bulkSendType==='template'?C.brandGreenDark:C.text2,fontWeight:700,fontSize:12,cursor:'pointer'}}>✅ Template aprovado (API)</button>
+                </div>
               </Field>
 
-              <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 12px',fontSize:11,color:'#92400e',marginBottom:12}}>
-                ⚠️ O WhatsApp só permite texto livre para contatos que falaram com você nas últimas 24h. Fora desse prazo, a Meta exige um template aprovado — o envio pode falhar para esses números.
-              </div>
+              {bulkSendType==='texto'?(
+                <>
+                  <Field label="Mensagem *">
+                    <textarea value={bulkMsg} onChange={e=>setBulkMsg(e.target.value)} rows={4} placeholder="Digite a mensagem que será enviada para todos os contatos selecionados..."
+                      style={{width:'100%',background:'#f8fafc',border:`1px solid ${C.border}`,borderRadius:7,padding:'8px 10px',fontSize:12,color:C.text,outline:'none',resize:'vertical' as const,boxSizing:'border-box' as const}}/>
+                  </Field>
+                  <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 12px',fontSize:11,color:'#92400e',marginBottom:12}}>
+                    ⚠️ O WhatsApp só permite texto livre para contatos que falaram com você nas últimas 24h. Fora desse prazo, a Meta exige um template aprovado — o envio pode falhar para esses números.
+                  </div>
+                </>
+              ):(
+                <>
+                  {!templatesLoaded?(
+                    <div style={{fontSize:11.5,color:C.text3,marginBottom:12}}>Carregando templates aprovados...</div>
+                  ):templates.length===0?(
+                    <div style={{background:'#fef2f2',border:'1px solid #fecaca',borderRadius:8,padding:'8px 12px',fontSize:11.5,color:'#991b1b',marginBottom:12}}>
+                      Nenhum template aprovado encontrado. Verifique se <strong>META_WABA_ID</strong> e <strong>META_ACCESS_TOKEN</strong> estão configurados em Configurações, ou crie/aprove um template em Meta for Developers → WhatsApp → Message Templates.
+                    </div>
+                  ):(
+                    <>
+                      <Field label="Template *">
+                        <SelectInput value={bulkTemplateName} onChange={selectBulkTemplate}
+                          options={[{value:'',label:'Selecione...'},...templates.map(t=>({value:t.name,label:`${t.name} (${t.language})`}))]}/>
+                      </Field>
+                      {bulkTemplateName&&(()=>{
+                        const t=templates.find(x=>x.name===bulkTemplateName);
+                        if(!t) return null;
+                        return (
+                          <>
+                            <Field label="Pré-visualização">
+                              <div style={{background:'#f8fafc',border:`1px solid ${C.border}`,borderRadius:7,padding:'9px 12px',fontSize:12,color:C.text2,fontStyle:'italic' as const}}>{t.bodyText||'(sem corpo de texto)'}</div>
+                            </Field>
+                            {t.varCount>0&&Array.from({length:t.varCount}).map((_,i)=>(
+                              <Field key={i} label={`Variável {{${i+1}}}`} hint={i===0?'Use {{nome}} para inserir automaticamente o nome de cada contato':undefined}>
+                                <TextInput value={bulkTemplateVars[i]||''} onChange={v=>setBulkTemplateVars(prev=>{ const arr=[...prev]; arr[i]=v; return arr; })} placeholder="Ex: {{nome}} ou um valor fixo"/>
+                              </Field>
+                            ))}
+                          </>
+                        );
+                      })()}
+                      <div style={{background:'#f0fdf4',border:'1px solid #bbf7d0',borderRadius:8,padding:'8px 12px',fontSize:11,color:'#065f46',marginBottom:12}}>
+                        ✅ Templates aprovados podem ser enviados a qualquer contato pela API oficial da Meta, mesmo fora da janela de 24h.
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
 
               {bulkRecipients.length>0&&(
                 <div style={{border:`1px solid ${C.border}`,borderRadius:8,marginBottom:12,maxHeight:200,overflowY:'auto' as const}}>
@@ -746,7 +820,7 @@ export default function InboxPage() {
                   label={bulkSending?`Enviando... (${bulkRecipients.filter(r=>r.status!=='pendente').length}/${bulkRecipients.length})`:`Enviar para ${bulkRecipients.length} contato(s)`}
                   onClick={bulkSend}
                   full={!bulkSending}
-                  color={(!bulkMsg.trim()||bulkRecipients.length===0||bulkSending)?C.text3:undefined}
+                  color={(!bulkCanSend||bulkSending)?C.text3:undefined}
                 />
                 {bulkSending&&<Btn label="Cancelar" onClick={bulkCancel} variant="ghost"/>}
               </div>
