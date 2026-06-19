@@ -145,6 +145,8 @@ export default function InboxPage() {
   const [bulkTemplateVars,setBulkTemplateVars] = useState<string[]>([]);
   const [inboxSearch,setInboxSearch] = useState('');
   const [inboxQueueFilter,setInboxQueueFilter] = useState('Todos');
+  const [inboxQueueMenuOpen,setInboxQueueMenuOpen] = useState(false);
+  const inboxQueueMenuRef = useRef<HTMLDivElement>(null);
   const [sbOpen,setSbOpen] = useState(false);
   const [me,setMe] = useState<{id:string;username:string;role:'admin'|'partner';queueId?:string}|null>(null);
   const [meLoaded,setMeLoaded] = useState(false);
@@ -243,6 +245,14 @@ export default function InboxPage() {
   },[selected,contacts]);
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}); },[messages]);
+  useEffect(()=>{
+    if(!inboxQueueMenuOpen) return;
+    const onDocClick=(e:MouseEvent)=>{
+      if(inboxQueueMenuRef.current && !inboxQueueMenuRef.current.contains(e.target as Node)) setInboxQueueMenuOpen(false);
+    };
+    document.addEventListener('mousedown',onDocClick);
+    return ()=>document.removeEventListener('mousedown',onDocClick);
+  },[inboxQueueMenuOpen]);
 
   const sendMsg = async()=>{
     if(!input.trim()||!selected||sending) return;
@@ -471,11 +481,27 @@ export default function InboxPage() {
                     Fila: <strong style={{color:C.text}}>{queues.find(q=>q.id===me?.queueId)?.name||'—'}</strong>
                   </div>
                 ):(
-                  <div style={{display:'flex',gap:5,flexWrap:'wrap' as const}}>
-                    <button onClick={()=>setInboxQueueFilter('Todos')} style={{background:inboxQueueFilter==='Todos'?C.text:'#fff',color:inboxQueueFilter==='Todos'?'#fff':C.text2,border:`1px solid ${inboxQueueFilter==='Todos'?C.text:C.border}`,borderRadius:6,padding:'3px 8px',fontSize:10,cursor:'pointer',fontWeight:600}}>Todas as filas</button>
-                    {queues.map(q=>(
-                      <button key={q.id} onClick={()=>setInboxQueueFilter(q.id)} style={{background:inboxQueueFilter===q.id?q.color:'#fff',color:inboxQueueFilter===q.id?'#fff':C.text2,border:`1px solid ${inboxQueueFilter===q.id?q.color:C.border}`,borderRadius:6,padding:'3px 8px',fontSize:10,cursor:'pointer',fontWeight:600}}>{q.name}</button>
-                    ))}
+                  <div ref={inboxQueueMenuRef} style={{position:'relative' as const}}>
+                    <button onClick={()=>setInboxQueueMenuOpen(o=>!o)}
+                      style={{display:'flex',alignItems:'center',gap:6,width:'100%',background:'#f8fafc',border:`1px solid ${C.border}`,borderRadius:7,padding:'6px 9px',fontSize:11.5,fontWeight:600,color:C.text,cursor:'pointer',boxSizing:'border-box' as const}}>
+                      <span style={{width:8,height:8,borderRadius:'50%',background:inboxQueueFilter==='Todos'?C.text3:queueColor(inboxQueueFilter),display:'inline-block',flexShrink:0}}/>
+                      <span style={{flex:1,textAlign:'left' as const,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{inboxQueueFilter==='Todos'?'Todas as filas':queueName(inboxQueueFilter)}</span>
+                      <span style={{color:C.text3,fontSize:9,transform:inboxQueueMenuOpen?'rotate(180deg)':undefined,transition:'transform .15s',flexShrink:0}}>▾</span>
+                    </button>
+                    {inboxQueueMenuOpen&&(
+                      <div style={{position:'absolute' as const,top:'calc(100% + 4px)',left:0,right:0,background:'#fff',border:`1px solid ${C.border}`,borderRadius:8,boxShadow:'0 8px 24px rgba(15,23,42,.14)',zIndex:60,overflow:'hidden',maxHeight:240,overflowY:'auto' as const}}>
+                        <button onClick={()=>{setInboxQueueFilter('Todos');setInboxQueueMenuOpen(false);}}
+                          style={{display:'flex',alignItems:'center',gap:7,width:'100%',padding:'7px 10px',background:inboxQueueFilter==='Todos'?'#f1f5f9':'#fff',border:'none',borderBottom:`1px solid #f1f5f9`,fontSize:11.5,fontWeight:600,color:C.text,cursor:'pointer',textAlign:'left' as const}}>
+                          <span style={{width:8,height:8,borderRadius:'50%',background:C.text3,display:'inline-block',flexShrink:0}}/>Todas as filas
+                        </button>
+                        {queues.map(q=>(
+                          <button key={q.id} onClick={()=>{setInboxQueueFilter(q.id);setInboxQueueMenuOpen(false);}}
+                            style={{display:'flex',alignItems:'center',gap:7,width:'100%',padding:'7px 10px',background:inboxQueueFilter===q.id?'#f1f5f9':'#fff',border:'none',borderBottom:`1px solid #f1f5f9`,fontSize:11.5,fontWeight:600,color:C.text,cursor:'pointer',textAlign:'left' as const}}>
+                            <span style={{width:8,height:8,borderRadius:'50%',background:q.color,display:'inline-block',flexShrink:0}}/>{q.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
