@@ -17,6 +17,8 @@ const C = {
   accent:'#1d4ed8', text:'#1e293b', text2:'#64748b', text3:'#94a3b8',
   border:'#e2e8f0', green:'#10b981', red:'#ef4444', amber:'#f59e0b',
   brandBlue:'#2b5b83', brandGreen:'#85c674', brandGreenDark:'#3f7d3a', brandGreenBg:'#eaf6e6',
+  sideText:'#c3d3e3', sideTextDim:'#90a8c2', sideBorder:'rgba(255,255,255,.12)',
+  sideHover:'rgba(255,255,255,.07)', sideActive:'rgba(255,255,255,.12)',
 };
 const STATUSES:LeadStatus[] = ['Novo','Em Contato','Simulação','Dados Bancários','Fechado','Perdido'];
 const SBG:Record<LeadStatus,string> = {'Novo':'#dbeafe','Em Contato':'#fef3c7','Simulação':'#ede9fe','Dados Bancários':'#dcfce7','Fechado':'#d1fae5','Perdido':'#fee2e2'};
@@ -271,25 +273,25 @@ export default function InboxPage() {
 
       {/* ── Sidebar ── */}
       <style>{`
-        .gt-side{width:64px;background:#ffffff;border-right:1px solid ${C.border};display:flex;flex-direction:column;flex-shrink:0;transition:width .18s ease;overflow:hidden;position:relative;z-index:50;}
-        .gt-side.open{width:228px;box-shadow:2px 0 14px rgba(15,23,42,.08);}
+        .gt-side{width:64px;background:${C.brandBlue};border-right:1px solid ${C.sideBorder};display:flex;flex-direction:column;flex-shrink:0;transition:width .18s ease;overflow:hidden;position:relative;z-index:50;}
+        .gt-side.open{width:228px;box-shadow:2px 0 14px rgba(15,23,42,.18);}
         .gt-side-label{opacity:0;white-space:nowrap;transition:opacity .12s ease;font-size:12.5px;font-weight:600;}
         .gt-side.open .gt-side-label{opacity:1;}
         .gt-side-row{display:flex;align-items:center;width:100%;height:42px;border:none;background:transparent;cursor:pointer;position:relative;padding:0;text-align:left;}
-        .gt-side-row:hover{background:#f6faf5;}
-        .gt-side-row.active{background:${C.brandGreenBg};}
+        .gt-side-row:hover{background:${C.sideHover};}
+        .gt-side-row.active{background:${C.sideActive};}
         .gt-side-row.active .gt-side-bar{opacity:1;}
         .gt-side-bar{position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:${C.brandGreen};opacity:0;}
         .gt-side-ic{width:64px;height:42px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
       `}</style>
       <div className={`gt-side${sbOpen?' open':''}`} onMouseEnter={()=>setSbOpen(true)} onMouseLeave={()=>setSbOpen(false)}>
-        <div style={{height:56,display:'flex',alignItems:'center',flexShrink:0,borderBottom:`1px solid ${C.border}`}}>
+        <div style={{height:56,display:'flex',alignItems:'center',flexShrink:0,borderBottom:`1px solid ${C.sideBorder}`}}>
           <div style={{width:64,height:56,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-            <div style={{width:30,height:30,borderRadius:8,background:C.brandBlue,display:'flex',alignItems:'center',justifyContent:'center'}}>
-              <span style={{color:'#fff',fontSize:14,fontWeight:800}}>G</span>
+            <div style={{width:30,height:30,borderRadius:8,background:C.brandGreen,display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <span style={{color:C.brandBlue,fontSize:14,fontWeight:800}}>G</span>
             </div>
           </div>
-          <span className="gt-side-label" style={{color:C.text,fontWeight:800,fontSize:13}}>GranaTech</span>
+          <span className="gt-side-label" style={{color:'#fff',fontWeight:800,fontSize:13}}>GranaTech</span>
         </div>
         <div style={{flex:1,overflowY:'auto' as const,paddingTop:6}}>
           {NAV_VISIBLE.map(n=>{
@@ -297,19 +299,19 @@ export default function InboxPage() {
             return (
               <button key={n.id} onClick={()=>setScreen(n.id)} title={n.label} className={`gt-side-row${active?' active':''}`}>
                 <span className="gt-side-bar"/>
-                <span className="gt-side-ic" style={{color:active?C.brandGreenDark:C.text2}}><n.Icon size={18}/></span>
-                <span className="gt-side-label" style={{color:active?C.brandGreenDark:C.text}}>{n.label}</span>
+                <span className="gt-side-ic" style={{color:active?'#fff':C.sideText}}><n.Icon size={18}/></span>
+                <span className="gt-side-label" style={{color:active?'#fff':C.sideText,fontWeight:active?700:600}}>{n.label}</span>
               </button>
             );
           })}
         </div>
         {me&&(
-          <div style={{borderTop:`1px solid ${C.border}`,padding:'8px 0'}}>
+          <div style={{borderTop:`1px solid ${C.sideBorder}`,padding:'8px 0'}}>
             <button onClick={logout} title="Sair" className="gt-side-row">
-              <span className="gt-side-ic" style={{color:C.text2}}>
+              <span className="gt-side-ic" style={{color:C.sideTextDim}}>
                 <IconBase size={18}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></IconBase>
               </span>
-              <span className="gt-side-label" style={{color:C.text2}}>Sair ({me.username})</span>
+              <span className="gt-side-label" style={{color:C.sideTextDim}}>Sair ({me.username})</span>
             </button>
           </div>
         )}
