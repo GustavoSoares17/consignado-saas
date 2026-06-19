@@ -7,6 +7,7 @@ const BASE_URL = "https://graph.facebook.com/v19.0";
 
 const PHONE_ID  = process.env.META_PHONE_NUMBER_ID!;
 const TOKEN     = process.env.META_ACCESS_TOKEN!;
+const WABA_ID   = process.env.META_WABA_ID!;
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,14 @@ export interface TemplateParameter {
   type: "text" | "image" | "document" | "video";
   text?: string;
   image?: { link: string };
+}
+
+export interface MetaTemplateInfo {
+  name: string;
+  language: string;
+  status: string;
+  bodyText: string;
+  varCount: number;
 }
 
 export interface IncomingMessage {
@@ -140,6 +149,35 @@ export async function sendTemplate(
   }
 
   return data as { messages: [{ id: string }] };
+}
+
+/**
+ * Lista os templates de mensagem aprovados pela Meta para a WABA configurada.
+ * Usado no disparo em massa, já que mensagens fora da janela de 24h exigem template.
+ */
+export async function listTemplates(): Promise<MetaTemplateInfo[]> {
+  if (!WABA_ID || !TOKEN) return [];
+  const res = await fetch(
+    `${BASE_URL}/${WABA_ID}/message_templates?fields=name,status,language,components&limit=200`,
+    { headers: { Authorization: `Bearer ${TOKEN}` } }
+  );
+  const data = await res.json();
+  if (!res.ok) {
+    console.error("[Meta] Erro ao listar templates:", data);
+    return [];
+  }
+  const items = (data?.data || []) as any[];
+  return items
+    .filter((t) => t.status === "APPROVED")
+    .map((t) => {
+      const body = (t.components || []).find((c: any) => c.type === "BODY");
+      const bodyText = body?.text || "";
+      const matches = bodyText.match(/\{\{\d+\}\}/g) || [];
+      const varCount = matches.length
+        ? Math.max(...matches.map((m: string) => parseInt(m.replace(/\D/g, ""), 10)))
+        : 0;
+      return { name: t.name, language: t.language, status: t.status, bodyText, varCount };
+    });
 }
 
 /**
