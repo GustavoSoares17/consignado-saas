@@ -16,6 +16,7 @@ const C = {
   bg:'#f0f4f8', bg2:'#ffffff', sidebar:'#0f2167', sidebarActive:'#1a3a8f',
   accent:'#1d4ed8', text:'#1e293b', text2:'#64748b', text3:'#94a3b8',
   border:'#e2e8f0', green:'#10b981', red:'#ef4444', amber:'#f59e0b',
+  brandBlue:'#2b5b83', brandGreen:'#85c674', brandGreenDark:'#3f7d3a', brandGreenBg:'#eaf6e6',
 };
 const STATUSES:LeadStatus[] = ['Novo','Em Contato','Simulação','Dados Bancários','Fechado','Perdido'];
 const SBG:Record<LeadStatus,string> = {'Novo':'#dbeafe','Em Contato':'#fef3c7','Simulação':'#ede9fe','Dados Bancários':'#dcfce7','Fechado':'#d1fae5','Perdido':'#fee2e2'};
@@ -113,8 +114,60 @@ export default function InboxPage() {
   const [dispatching,setDispatching] = useState(false);
   const [dispResult,setDispResult] = useState<string|null>(null);
   const [inboxSearch,setInboxSearch] = useState('');
+  const [inboxQueueFilter,setInboxQueueFilter] = useState('Todos');
   const [sbOpen,setSbOpen] = useState(false);
+  const [me,setMe] = useState<{id:string;username:string;role:'admin'|'partner';queueId?:string}|null>(null);
+  const [meLoaded,setMeLoaded] = useState(false);
+  const [users,setUsers] = useState<{id:string;username:string;role:'admin'|'partner';queueId?:string;createdAt:number}[]>([]);
+  const [userForm,setUserForm] = useState<{username:string;password:string;role:'admin'|'partner';queueId:string}|null>(null);
+  const [userError,setUserError] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const isPartner = me?.role==='partner';
+  const NAV_VISIBLE = isPartner ? NAV.filter(n=>n.id==='inbox'||n.id==='leads') : NAV;
+
+  // Carrega sessão atual e força tela inicial / fila travada para parceiro.
+  useEffect(()=>{
+    fetch('/api/auth/me').then(r=>r.json()).then(d=>{
+      if(!d.user){ window.location.href='/login'; return; }
+      setMe(d.user);
+      if(d.user.role==='partner'){ setScreen('inbox'); setInboxQueueFilter(d.user.queueId||'Todos'); }
+      setMeLoaded(true);
+    }).catch(()=>setMeLoaded(true));
+  },[]);
+
+  const loadUsers = ()=>{ fetch('/api/auth/users').then(r=>r.json()).then(d=>{ if(d.users) setUsers(d.users); }).catch(()=>{}); };
+  useEffect(()=>{ if(me?.role==='admin') loadUsers(); },[me]);
+
+  const logout = async()=>{ await fetch('/api/auth/logout',{method:'POST'}); window.location.href='/login'; };
+
+  const createUserSubmit = async()=>{
+    if(!userForm) return;
+    setUserError('');
+    if(!userForm.username.trim()||!userForm.password){ setUserError('Usuário e senha são obrigatórios.'); return; }
+    if(userForm.role==='partner'&&!userForm.queueId){ setUserError('Selecione a fila do parceiro.'); return; }
+    const res = await fetch('/api/auth/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(userForm)});
+    const data = await res.json();
+    if(!res.ok){ setUserError(data.error||'Erro ao criar usuário.'); return; }
+    setUserForm(null); loadUsers();
+  };
+
+  const deleteUserRow = async(id:string)=>{
+    if(!confirm('Remover este acesso?')) return;
+    const res = await fetch(`/api/auth/users?id=${id}`,{method:'DELETE'});
+    const data = await res.json();
+    if(!res.ok){ alert(data.error||'Erro ao remover.'); return; }
+    loadUsers();
+  };
+
+  const resetUserPassword = async(id:string)=>{
+    const pw = prompt('Nova senha para este acesso:');
+    if(!pw) return;
+    const res = await fetch('/api/auth/users',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,password:pw})});
+    const data = await res.json();
+    if(!res.ok){ alert(data.error||'Erro ao alterar senha.'); return; }
+    alert('Senha atualizada.');
+  };
 
   // Carrega do servidor (persistido em Redis) — localStorage fica só como cache
   // instantâneo pra evitar tela vazia no primeiro render.
@@ -195,11 +248,19 @@ export default function InboxPage() {
   };
 
   const filteredLeads=leads.filter(l=>{
+    if(isPartner && l.queue!==me?.queueId) return false;
     const ms=!leadSearch||l.name.toLowerCase().includes(leadSearch.toLowerCase())||l.phone.includes(leadSearch);
     const mf=leadFilter==='Todos'||l.status===leadFilter;
     return ms&&mf;
   });
-  const filteredContacts=contacts.filter(c=>!inboxSearch||c.name?.toLowerCase().includes(inboxSearch.toLowerCase())||c.phone.includes(inboxSearch));
+  const effectiveQueueFilter = isPartner ? (me?.queueId||'Todos') : inboxQueueFilter;
+  const filteredContacts=contacts.filter(c=>{
+    const ms=!inboxSearch||c.name?.toLowerCase().includes(inboxSearch.toLowerCase())||c.phone.includes(inboxSearch);
+    if(!ms) return false;
+    if(effectiveQueueFilter==='Todos') return true;
+    const lead=leads.find(l=>l.phone===c.phone);
+    return lead?.queue===effectiveQueueFilter;
+  });
   const selContact=contacts.find(c=>c.phone===selected);
   const linkedLead=selected?leads.find(l=>l.phone===selected):null;
   const queueName=(qid:string)=>queues.find(q=>q.id===qid)?.name||'—';
@@ -215,33 +276,43 @@ export default function InboxPage() {
         .gt-side-label{opacity:0;white-space:nowrap;transition:opacity .12s ease;font-size:12.5px;font-weight:600;}
         .gt-side.open .gt-side-label{opacity:1;}
         .gt-side-row{display:flex;align-items:center;width:100%;height:42px;border:none;background:transparent;cursor:pointer;position:relative;padding:0;text-align:left;}
-        .gt-side-row:hover{background:#f8fafc;}
-        .gt-side-row.active{background:#eff6ff;}
+        .gt-side-row:hover{background:#f6faf5;}
+        .gt-side-row.active{background:${C.brandGreenBg};}
         .gt-side-row.active .gt-side-bar{opacity:1;}
-        .gt-side-bar{position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:${C.accent};opacity:0;}
+        .gt-side-bar{position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:${C.brandGreen};opacity:0;}
         .gt-side-ic{width:64px;height:42px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
       `}</style>
       <div className={`gt-side${sbOpen?' open':''}`} onMouseEnter={()=>setSbOpen(true)} onMouseLeave={()=>setSbOpen(false)}>
         <div style={{height:56,display:'flex',alignItems:'center',flexShrink:0,borderBottom:`1px solid ${C.border}`}}>
           <div style={{width:64,height:56,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-            <div style={{width:30,height:30,borderRadius:8,background:'#0f172a',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <div style={{width:30,height:30,borderRadius:8,background:C.brandBlue,display:'flex',alignItems:'center',justifyContent:'center'}}>
               <span style={{color:'#fff',fontSize:14,fontWeight:800}}>G</span>
             </div>
           </div>
           <span className="gt-side-label" style={{color:C.text,fontWeight:800,fontSize:13}}>GranaTech</span>
         </div>
         <div style={{flex:1,overflowY:'auto' as const,paddingTop:6}}>
-          {NAV.map(n=>{
+          {NAV_VISIBLE.map(n=>{
             const active=screen===n.id;
             return (
               <button key={n.id} onClick={()=>setScreen(n.id)} title={n.label} className={`gt-side-row${active?' active':''}`}>
                 <span className="gt-side-bar"/>
-                <span className="gt-side-ic" style={{color:active?C.accent:C.text2}}><n.Icon size={18}/></span>
-                <span className="gt-side-label" style={{color:active?C.accent:C.text}}>{n.label}</span>
+                <span className="gt-side-ic" style={{color:active?C.brandGreenDark:C.text2}}><n.Icon size={18}/></span>
+                <span className="gt-side-label" style={{color:active?C.brandGreenDark:C.text}}>{n.label}</span>
               </button>
             );
           })}
         </div>
+        {me&&(
+          <div style={{borderTop:`1px solid ${C.border}`,padding:'8px 0'}}>
+            <button onClick={logout} title="Sair" className="gt-side-row">
+              <span className="gt-side-ic" style={{color:C.text2}}>
+                <IconBase size={18}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></IconBase>
+              </span>
+              <span className="gt-side-label" style={{color:C.text2}}>Sair ({me.username})</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Main ── */}
@@ -317,11 +388,27 @@ export default function InboxPage() {
             {/* Contact list */}
             <div style={{width:270,borderRight:`1px solid ${C.border}`,background:'#fff',display:'flex',flexDirection:'column' as const,flexShrink:0}}>
               <div style={{padding:'8px 10px',borderBottom:`1px solid ${C.border}`}}>
-                <input value={inboxSearch} onChange={e=>setInboxSearch(e.target.value)} placeholder="Buscar contato..." style={{width:'100%',background:'#f8fafc',border:`1px solid ${C.border}`,borderRadius:7,padding:'6px 10px',fontSize:12,outline:'none',boxSizing:'border-box' as const}}/>
+                <input value={inboxSearch} onChange={e=>setInboxSearch(e.target.value)} placeholder="Buscar contato..." style={{width:'100%',background:'#f8fafc',border:`1px solid ${C.border}`,borderRadius:7,padding:'6px 10px',fontSize:12,outline:'none',boxSizing:'border-box' as const,marginBottom:7}}/>
+                {isPartner?(
+                  <div style={{fontSize:10.5,color:C.text2,display:'flex',alignItems:'center',gap:5}}>
+                    <span style={{width:7,height:7,borderRadius:'50%',background:queues.find(q=>q.id===me?.queueId)?.color||C.text3,display:'inline-block'}}/>
+                    Fila: <strong style={{color:C.text}}>{queues.find(q=>q.id===me?.queueId)?.name||'—'}</strong>
+                  </div>
+                ):(
+                  <div style={{display:'flex',gap:5,flexWrap:'wrap' as const}}>
+                    <button onClick={()=>setInboxQueueFilter('Todos')} style={{background:inboxQueueFilter==='Todos'?C.text:'#fff',color:inboxQueueFilter==='Todos'?'#fff':C.text2,border:`1px solid ${inboxQueueFilter==='Todos'?C.text:C.border}`,borderRadius:6,padding:'3px 8px',fontSize:10,cursor:'pointer',fontWeight:600}}>Todas as filas</button>
+                    {queues.map(q=>(
+                      <button key={q.id} onClick={()=>setInboxQueueFilter(q.id)} style={{background:inboxQueueFilter===q.id?q.color:'#fff',color:inboxQueueFilter===q.id?'#fff':C.text2,border:`1px solid ${inboxQueueFilter===q.id?q.color:C.border}`,borderRadius:6,padding:'3px 8px',fontSize:10,cursor:'pointer',fontWeight:600}}>{q.name}</button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div style={{flex:1,overflowY:'auto' as const}}>
                 {contacts.length===0&&(
                   <Empty icon="💬" text={`Nenhuma conversa ainda.\nConfigure as chaves de API\npara receber mensagens.`}/>
+                )}
+                {contacts.length>0&&filteredContacts.length===0&&(
+                  <div style={{textAlign:'center' as const,padding:30,color:C.text3,fontSize:12}}>Nenhuma conversa encontrada para esse filtro.</div>
                 )}
                 {filteredContacts.map(c=>(
                   <div key={c.phone} onClick={()=>setSelected(c.phone)} style={{padding:'9px 10px',cursor:'pointer',borderBottom:`1px solid ${C.border}`,background:selected===c.phone?'#eff6ff':'#fff',display:'flex',gap:8,alignItems:'center'}}>
@@ -570,6 +657,37 @@ export default function InboxPage() {
                   </Field>
                 ))}
               </Card>
+              {me?.role==='admin'&&(
+                <Card style={{marginBottom:12}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                    <SectionTitle label="Acessos (login de parceiros e equipe)"/>
+                    <Btn label="+ Novo acesso" onClick={()=>{setUserError('');setUserForm({username:'',password:'',role:'partner',queueId:queues[0]?.id||''});}} small/>
+                  </div>
+                  <div style={{fontSize:11,color:C.text2,marginBottom:10}}>Crie um usuário e senha para cada parceiro (corban) — ele verá apenas a fila vinculada. Use papel "Equipe GranaTech" para acessos internos com visão completa.</div>
+                  {users.length===0?(
+                    <div style={{fontSize:11.5,color:C.text3,padding:'8px 0'}}>Nenhum acesso cadastrado ainda.</div>
+                  ):(
+                    <div style={{border:`1px solid ${C.border}`,borderRadius:8,overflow:'hidden'}}>
+                      {users.map(u=>(
+                        <div key={u.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 10px',borderTop:`1px solid #f1f5f9`}}>
+                          <div>
+                            <div style={{fontWeight:600,fontSize:12,color:C.text}}>{u.username}</div>
+                            <div style={{fontSize:10.5,color:C.text3,display:'flex',gap:6,alignItems:'center',marginTop:1}}>
+                              <span style={{background:u.role==='admin'?'#eef7ec':'#eff6ff',color:u.role==='admin'?C.brandGreenDark:C.accent,borderRadius:4,padding:'1px 6px',fontWeight:600}}>{u.role==='admin'?'Equipe GranaTech':'Parceiro'}</span>
+                              {u.role==='partner'&&<span>Fila: {queueName(u.queueId||'')}</span>}
+                              {u.id===me?.id&&<span>(você)</span>}
+                            </div>
+                          </div>
+                          <div style={{display:'flex',gap:4}}>
+                            <button onClick={()=>resetUserPassword(u.id)} style={{background:'#f1f5f9',color:C.text2,border:'none',borderRadius:5,padding:'3px 8px',fontSize:10,cursor:'pointer',fontWeight:600}}>Redefinir senha</button>
+                            <button onClick={()=>deleteUserRow(u.id)} style={{background:'#fef2f2',color:C.red,border:'none',borderRadius:5,padding:'3px 8px',fontSize:10,cursor:'pointer',fontWeight:600}}>Remover</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              )}
               <Card>
                 <SectionTitle label="URL do Webhook"/>
                 <div style={{background:'#f8fafc',border:`1px solid ${C.border}`,borderRadius:7,padding:'9px 12px',fontSize:12,fontFamily:'monospace',color:C.accent,display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
@@ -646,6 +764,34 @@ export default function InboxPage() {
               if(!aiRuleForm.trigger?.trim()||!aiRuleForm.response?.trim()){alert('Gatilho e resposta são obrigatórios.');return;}
               saveAiRule(aiRuleForm);
             }}/>
+          </div>
+        </Modal>
+      )}
+
+      {userForm&&(
+        <Modal title="Novo Acesso" onClose={()=>setUserForm(null)}>
+          <Field label="Tipo de acesso *">
+            <SelectInput value={userForm.role} onChange={v=>setUserForm(p=>p&&({...p,role:v as 'admin'|'partner'}))}
+              options={[{value:'partner',label:'Parceiro (vê só a fila dele)'},{value:'admin',label:'Equipe GranaTech (acesso completo)'}]}/>
+          </Field>
+          <Field label="Usuário *" hint="Será usado para entrar — sem espaços">
+            <TextInput value={userForm.username} onChange={v=>setUserForm(p=>p&&({...p,username:v}))} placeholder="ex: corban.joao"/>
+          </Field>
+          <Field label="Senha *" hint="Mínimo 4 caracteres">
+            <TextInput value={userForm.password} onChange={v=>setUserForm(p=>p&&({...p,password:v}))} placeholder="••••••••" type="password"/>
+          </Field>
+          {userForm.role==='partner'&&(
+            <Field label="Fila vinculada *">
+              <SelectInput value={userForm.queueId} onChange={v=>setUserForm(p=>p&&({...p,queueId:v}))}
+                options={[{value:'',label:'Selecione a fila...'},...queues.map(q=>({value:q.id,label:q.name}))]}/>
+            </Field>
+          )}
+          {userError&&(
+            <div style={{background:'#fef2f2',border:'1px solid #fecaca',color:'#991b1b',fontSize:11.5,borderRadius:7,padding:'8px 10px',marginBottom:12}}>{userError}</div>
+          )}
+          <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+            <Btn label="Cancelar" onClick={()=>setUserForm(null)} variant="ghost"/>
+            <Btn label="Criar acesso" onClick={createUserSubmit}/>
           </div>
         </Modal>
       )}
