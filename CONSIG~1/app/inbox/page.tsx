@@ -20,14 +20,26 @@ const C = {
 const STATUSES:LeadStatus[] = ['Novo','Em Contato','Simulação','Dados Bancários','Fechado','Perdido'];
 const SBG:Record<LeadStatus,string> = {'Novo':'#dbeafe','Em Contato':'#fef3c7','Simulação':'#ede9fe','Dados Bancários':'#dcfce7','Fechado':'#d1fae5','Perdido':'#fee2e2'};
 const SFG:Record<LeadStatus,string> = {'Novo':'#1e40af','Em Contato':'#92400e','Simulação':'#6d28d9','Dados Bancários':'#065f46','Fechado':'#047857','Perdido':'#b91c1c'};
+// ─── Ícones (SVG line-icons, monocromáticos) ─────────────────────────────────
+function IconBase({children,size=18}:{children:React.ReactNode;size?:number}) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round">{children}</svg>;
+}
+function IconDashboard({size}:{size?:number}){return <IconBase size={size}><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></IconBase>;}
+function IconChat({size}:{size?:number}){return <IconBase size={size}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></IconBase>;}
+function IconUsers({size}:{size?:number}){return <IconBase size={size}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></IconBase>;}
+function IconLayers({size}:{size?:number}){return <IconBase size={size}><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></IconBase>;}
+function IconBot({size}:{size?:number}){return <IconBase size={size}><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.3" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.3" fill="currentColor" stroke="none"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1.2"/><path d="M2 14h2"/><path d="M20 14h2"/></IconBase>;}
+function IconSend({size}:{size?:number}){return <IconBase size={size}><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></IconBase>;}
+function IconSettings({size}:{size?:number}){return <IconBase size={size}><circle cx="12" cy="12" r="3"/><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.64-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61z"/></IconBase>;}
+
 const NAV = [
-  {id:'dashboard',label:'Dashboard',icon:'📊'},
-  {id:'inbox',label:'Atendimento',icon:'💬'},
-  {id:'leads',label:'Leads',icon:'👥'},
-  {id:'queues',label:'Filas',icon:'🗂️'},
-  {id:'ai',label:'Treinar IA',icon:'🤖'},
-  {id:'dispatches',label:'Disparos',icon:'📣'},
-  {id:'settings',label:'Configurações',icon:'⚙️'},
+  {id:'dashboard',label:'Dashboard',Icon:IconDashboard},
+  {id:'inbox',label:'Atendimento',Icon:IconChat},
+  {id:'leads',label:'Leads',Icon:IconUsers},
+  {id:'queues',label:'Filas',Icon:IconLayers},
+  {id:'ai',label:'Treinar IA',Icon:IconBot},
+  {id:'dispatches',label:'Disparos',Icon:IconSend},
+  {id:'settings',label:'Configurações',Icon:IconSettings},
 ];
 const DEF_QUEUES:Queue[] = [{id:'q1',name:'FGTS',color:'#10b981'},{id:'q2',name:'CLT',color:'#1d4ed8'},{id:'q3',name:'Refinanciamento',color:'#8b5cf6'}];
 const DEF_AI:AIConfig = {botName:'Assistente',greeting:'Olá! Como posso te ajudar?',personality:'Profissional e cordial.',active:false,rules:[]};
@@ -101,6 +113,7 @@ export default function InboxPage() {
   const [dispatching,setDispatching] = useState(false);
   const [dispResult,setDispResult] = useState<string|null>(null);
   const [inboxSearch,setInboxSearch] = useState('');
+  const [sbOpen,setSbOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Carrega do servidor (persistido em Redis) — localStorage fica só como cache
@@ -196,16 +209,39 @@ export default function InboxPage() {
     <div style={{display:'flex',height:'100vh',background:C.bg,fontFamily:"'Inter',system-ui,sans-serif",fontSize:13}}>
 
       {/* ── Sidebar ── */}
-      <div style={{width:60,background:C.sidebar,display:'flex',flexDirection:'column' as const,alignItems:'center',paddingTop:14,gap:2,flexShrink:0}}>
-        <div style={{width:34,height:34,background:'#fff',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',marginBottom:10}}>
-          <span style={{fontSize:16}}>💳</span>
+      <style>{`
+        .gt-side{width:64px;background:#ffffff;border-right:1px solid ${C.border};display:flex;flex-direction:column;flex-shrink:0;transition:width .18s ease;overflow:hidden;position:relative;z-index:50;}
+        .gt-side.open{width:228px;box-shadow:2px 0 14px rgba(15,23,42,.08);}
+        .gt-side-label{opacity:0;white-space:nowrap;transition:opacity .12s ease;font-size:12.5px;font-weight:600;}
+        .gt-side.open .gt-side-label{opacity:1;}
+        .gt-side-row{display:flex;align-items:center;width:100%;height:42px;border:none;background:transparent;cursor:pointer;position:relative;padding:0;text-align:left;}
+        .gt-side-row:hover{background:#f8fafc;}
+        .gt-side-row.active{background:#eff6ff;}
+        .gt-side-row.active .gt-side-bar{opacity:1;}
+        .gt-side-bar{position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:${C.accent};opacity:0;}
+        .gt-side-ic{width:64px;height:42px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+      `}</style>
+      <div className={`gt-side${sbOpen?' open':''}`} onMouseEnter={()=>setSbOpen(true)} onMouseLeave={()=>setSbOpen(false)}>
+        <div style={{height:56,display:'flex',alignItems:'center',flexShrink:0,borderBottom:`1px solid ${C.border}`}}>
+          <div style={{width:64,height:56,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <div style={{width:30,height:30,borderRadius:8,background:'#0f172a',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <span style={{color:'#fff',fontSize:14,fontWeight:800}}>G</span>
+            </div>
+          </div>
+          <span className="gt-side-label" style={{color:C.text,fontWeight:800,fontSize:13}}>GranaTech</span>
         </div>
-        {NAV.map(n=>(
-          <button key={n.id} onClick={()=>setScreen(n.id)} title={n.label}
-            style={{width:44,height:44,background:screen===n.id?C.sidebarActive:'transparent',border:'none',borderRadius:8,cursor:'pointer',fontSize:19,display:'flex',alignItems:'center',justifyContent:'center'}}>
-            {n.icon}
-          </button>
-        ))}
+        <div style={{flex:1,overflowY:'auto' as const,paddingTop:6}}>
+          {NAV.map(n=>{
+            const active=screen===n.id;
+            return (
+              <button key={n.id} onClick={()=>setScreen(n.id)} title={n.label} className={`gt-side-row${active?' active':''}`}>
+                <span className="gt-side-bar"/>
+                <span className="gt-side-ic" style={{color:active?C.accent:C.text2}}><n.Icon size={18}/></span>
+                <span className="gt-side-label" style={{color:active?C.accent:C.text}}>{n.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Main ── */}
