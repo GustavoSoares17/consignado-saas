@@ -2,8 +2,11 @@
 
 import { sendText } from '@/lib/meta';
 import { saveMessage } from '@/lib/store';
+import { getSession } from '@/lib/auth';
 
 export async function sendMessageAction(to: string, text: string) {
+  const session = await getSession();
+  if (!session) return { ok: false, error: 'Não autenticado.' };
   const result = await sendText(to, text);
   const msgId = result?.messages?.[0]?.id || `out_${Date.now()}`;
   await saveMessage({
