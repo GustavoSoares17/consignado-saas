@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       if (!text) return NextResponse.json({ error: "Campo 'text' obrigatório" }, { status: 400 });
       result = await sendText(to, text);
       const msgId = result?.messages?.[0]?.id || `out_${Date.now()}`;
-      saveMessage({
+      await saveMessage({
         id: msgId,
         from: process.env.META_PHONE_NUMBER_ID || "me",
         to,

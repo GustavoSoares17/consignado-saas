@@ -6,7 +6,7 @@ import { saveMessage } from '@/lib/store';
 export async function sendMessageAction(to: string, text: string) {
   const result = await sendText(to, text);
   const msgId = result?.messages?.[0]?.id || `out_${Date.now()}`;
-  saveMessage({
+  await saveMessage({
     id: msgId,
     from: process.env.META_PHONE_NUMBER_ID || 'system',
     to,

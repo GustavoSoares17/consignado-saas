@@ -5,14 +5,14 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const phone = searchParams.get('phone');
   if (phone) {
-    markAllRead(phone);
-    return NextResponse.json({ messages: getThread(phone) });
+    await markAllRead(phone);
+    return NextResponse.json({ messages: await getThread(phone) });
   }
-  return NextResponse.json({ contacts: getContacts() });
+  return NextResponse.json({ contacts: await getContacts() });
 }
 
 export async function POST(req: NextRequest) {
   const msg: Message = await req.json();
-  saveMessage(msg);
+  await saveMessage(msg);
   return NextResponse.json({ ok: true });
 }

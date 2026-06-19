@@ -103,18 +103,34 @@ export default function InboxPage() {
   const [inboxSearch,setInboxSearch] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Load from localStorage
+  // Carrega do servidor (persistido em Redis) — localStorage fica só como cache
+  // instantâneo pra evitar tela vazia no primeiro render.
+  const [hydrated,setHydrated] = useState(false);
   useEffect(()=>{
     try {
       const l=localStorage.getItem('gt_leads'); if(l) setLeads(JSON.parse(l));
       const q=localStorage.getItem('gt_queues'); if(q) setQueues(JSON.parse(q));
       const a=localStorage.getItem('gt_ai'); if(a) setAi(JSON.parse(a));
     } catch {}
+    (async()=>{
+      try {
+        const [lr,qr,ar] = await Promise.all([
+          fetch('/api/leads').then(r=>r.json()),
+          fetch('/api/queues').then(r=>r.json()),
+          fetch('/api/ai').then(r=>r.json()),
+        ]);
+        if (lr?.leads) setLeads(lr.leads);
+        if (qr?.queues) setQueues(qr.queues);
+        if (ar && ar.botName) setAi(ar);
+      } catch {} finally { setHydrated(true); }
+    })();
   },[]);
 
-  useEffect(()=>{ try{localStorage.setItem('gt_leads',JSON.stringify(leads));}catch{} },[leads]);
-  useEffect(()=>{ try{localStorage.setItem('gt_queues',JSON.stringify(queues));}catch{} },[queues]);
-  useEffect(()=>{ try{localStorage.setItem('gt_ai',JSON.stringify(ai));}catch{} },[ai]);
+  // Persiste no servidor (Redis) sempre que mudar — localStorage continua
+  // como cache local, mas a fonte de verdade pro webhook é o servidor.
+  useEffect(()=>{ try{localStorage.setItem('gt_leads',JSON.stringify(leads));}catch{}; if(hydrated) fetch('/api/leads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({leads})}).catch(()=>{}); },[leads,hydrated]);
+  useEffect(()=>{ try{localStorage.setItem('gt_queues',JSON.stringify(queues));}catch{}; if(hydrated) fetch('/api/queues',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({queues})}).catch(()=>{}); },[queues,hydrated]);
+  useEffect(()=>{ try{localStorage.setItem('gt_ai',JSON.stringify(ai));}catch{}; if(hydrated) fetch('/api/ai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ai)}).catch(()=>{}); },[ai,hydrated]);
 
   // Poll contacts
   useEffect(()=>{

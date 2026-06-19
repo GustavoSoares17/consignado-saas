@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { markAsRead, sendText } from "@/lib/meta";
-import { saveMessage } from "@/lib/store";
+import { saveMessage, getThread } from "@/lib/store";
+import { generateAIResponse } from "@/lib/ai";
 
 const VERIFY_TOKEN = process.env.META_VERIFY_TOKEN!;
 
@@ -49,7 +50,7 @@ async function handleIncomingMessage(
 
   console.log(`[Webhook] Mensagem de ${from} (${clientName}): "${text}"`);
 
-  saveMessage({
+  await saveMessage({
     id: msgId,
     from,
     to: process.env.META_PHONE_NUMBER_ID || "me",
@@ -62,11 +63,15 @@ async function handleIncomingMessage(
 
   await markAsRead(msgId);
 
-  const aiReply = await generateAIResponse(text, clientName);
+  // Histórico da conversa (excluindo a mensagem que acabou de ser salva, ela
+  // entra separadamente como "latestText" no prompt) para dar contexto à IA.
+  const history = await getThread(from);
+  const aiReply = await generateAIResponse(history.slice(0, -1), clientName, text);
+
   if (aiReply) {
     const result = await sendText(from, aiReply);
     const outId = result?.messages?.[0]?.id || `out_${Date.now()}`;
-    saveMessage({
+    await saveMessage({
       id: outId,
       from: process.env.META_PHONE_NUMBER_ID || "me",
       to: from,
@@ -75,37 +80,5 @@ async function handleIncomingMessage(
       direction: "outbound",
       status: "sent",
     });
-  }
-}
-
-async function generateAIResponse(userMessage: string, clientName: string): Promise<string | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return `Olá, ${clientName}! Recebemos sua mensagem e retornaremos em breve. 😊`;
-  }
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        max_tokens: 300,
-        messages: [
-          {
-            role: "system",
-            content: `Você é um assistente de crédito consignado CLT da GranaTech.
-Ajude ${clientName} a contratar o empréstimo consignado. Seja cordial e objetivo.
-Responda em português do Brasil. Nunca invente taxas ou valores.`,
-          },
-          { role: "user", content: userMessage },
-        ],
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) { console.error("[IA] Erro OpenAI:", data); return null; }
-    return data.choices?.[0]?.message?.content ?? null;
-  } catch (err) {
-    console.error("[IA] Erro:", err);
-    return null;
   }
 }

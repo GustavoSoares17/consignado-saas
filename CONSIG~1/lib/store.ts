@@ -1,3 +1,5 @@
+import { redis, dbAddToSet, dbSetMembers } from './db';
+
 export interface Message {
   id: string;
   from: string;
@@ -14,37 +16,75 @@ interface Thread {
   contactName: string;
 }
 
-// Module-level store — persists within a warm serverless instance.
-// For durable storage, replace with Vercel KV: https://vercel.com/docs/storage/vercel-kv
-const threads = new Map<string, Thread>();
+// Fallback em memória apenas para `next dev` sem Redis configurado.
+const memThreads = new Map<string, Thread>();
+const CONTACTS_SET = 'gt:contacts';
 
-export function saveMessage(msg: Message) {
+function threadKey(phone: string) {
+  return `gt:thread:${phone}`;
+}
+
+export async function saveMessage(msg: Message): Promise<void> {
   const phone = msg.direction === 'inbound' ? msg.from : msg.to;
-  const thread = threads.get(phone) || { messages: [], contactName: phone };
-  if (!thread.messages.find(m => m.id === msg.id)) {
-    thread.messages.push(msg);
+
+  if (redis) {
+    const key = threadKey(phone);
+    const raw = await redis.get<Thread>(key);
+    const thread: Thread = raw || { messages: [], contactName: phone };
+    if (!thread.messages.find((m) => m.id === msg.id)) thread.messages.push(msg);
+    if (msg.contactName) thread.contactName = msg.contactName;
+    await redis.set(key, thread);
+    await dbAddToSet(CONTACTS_SET, phone);
+    return;
   }
+
+  const thread = memThreads.get(phone) || { messages: [], contactName: phone };
+  if (!thread.messages.find((m) => m.id === msg.id)) thread.messages.push(msg);
   if (msg.contactName) thread.contactName = msg.contactName;
-  threads.set(phone, thread);
+  memThreads.set(phone, thread);
 }
 
-export function getThread(phone: string): Message[] {
-  return (threads.get(phone)?.messages || []).sort((a, b) => a.timestamp - b.timestamp);
+export async function getThread(phone: string): Promise<Message[]> {
+  if (redis) {
+    const thread = await redis.get<Thread>(threadKey(phone));
+    return (thread?.messages || []).sort((a, b) => a.timestamp - b.timestamp);
+  }
+  return (memThreads.get(phone)?.messages || []).sort((a, b) => a.timestamp - b.timestamp);
 }
 
-export function getContacts() {
+export async function getContacts() {
   const list: { phone: string; name: string; lastMessage: Message | null; unreadCount: number }[] = [];
-  // Use forEach instead of for...of to stay compatible with ES5 target
-  threads.forEach((thread, phone) => {
-    const sorted = thread.messages.slice().sort((a, b) => b.timestamp - a.timestamp);
-    const unread = thread.messages.filter(m => m.direction === 'inbound' && m.status === 'received').length;
-    list.push({ phone, name: thread.contactName, lastMessage: sorted[0] || null, unreadCount: unread });
-  });
+
+  if (redis) {
+    const phones = await dbSetMembers(CONTACTS_SET);
+    for (const phone of phones) {
+      const thread = await redis.get<Thread>(threadKey(phone));
+      if (!thread) continue;
+      const sorted = thread.messages.slice().sort((a, b) => b.timestamp - a.timestamp);
+      const unread = thread.messages.filter((m) => m.direction === 'inbound' && m.status === 'received').length;
+      list.push({ phone, name: thread.contactName, lastMessage: sorted[0] || null, unreadCount: unread });
+    }
+  } else {
+    memThreads.forEach((thread, phone) => {
+      const sorted = thread.messages.slice().sort((a, b) => b.timestamp - a.timestamp);
+      const unread = thread.messages.filter((m) => m.direction === 'inbound' && m.status === 'received').length;
+      list.push({ phone, name: thread.contactName, lastMessage: sorted[0] || null, unreadCount: unread });
+    });
+  }
+
   return list.sort((a, b) => (b.lastMessage?.timestamp ?? 0) - (a.lastMessage?.timestamp ?? 0));
 }
 
-export function markAllRead(phone: string) {
-  const thread = threads.get(phone);
+export async function markAllRead(phone: string): Promise<void> {
+  if (redis) {
+    const key = threadKey(phone);
+    const thread = await redis.get<Thread>(key);
+    if (!thread) return;
+    thread.messages.forEach((m) => { if (m.direction === 'inbound') m.status = 'read'; });
+    await redis.set(key, thread);
+    return;
+  }
+  const thread = memThreads.get(phone);
   if (!thread) return;
-  thread.messages.forEach(m => { if (m.direction === 'inbound') m.status = 'read'; });
+  thread.messages.forEach((m) => { if (m.direction === 'inbound') m.status = 'read'; });
 }
