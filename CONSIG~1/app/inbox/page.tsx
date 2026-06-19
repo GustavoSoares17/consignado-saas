@@ -49,6 +49,21 @@ const DEF_AI:AIConfig = {botName:'Assistente',greeting:'Olá! Como posso te ajud
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2)+Date.now().toString(36);
+type BulkStatus = 'pendente'|'enviado'|'falhou';
+interface BulkRecipient { phone:string; name:string; status:BulkStatus; }
+function parseBulkList(raw:string): BulkRecipient[] {
+  const lines = raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const seen = new Set<string>();
+  const out: BulkRecipient[] = [];
+  for (const line of lines) {
+    const parts = line.split(/[,;\t]/).map(p=>p.trim());
+    const phone = (parts[0]||'').replace(/\D/g,'');
+    if (!phone || phone.length<10 || seen.has(phone)) continue;
+    seen.add(phone);
+    out.push({ phone, name: parts[1]||'', status:'pendente' });
+  }
+  return out;
+}
 const fmtT = (ts:number) => new Date(ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 const fmtD = (ts:number) => new Date(ts).toLocaleDateString('pt-BR');
 
@@ -115,6 +130,14 @@ export default function InboxPage() {
   const [dispMsg,setDispMsg] = useState('');
   const [dispatching,setDispatching] = useState(false);
   const [dispResult,setDispResult] = useState<string|null>(null);
+  const [bulkMode,setBulkMode] = useState<'lista'|'fila'>('lista');
+  const [bulkRaw,setBulkRaw] = useState('');
+  const [bulkQueueId,setBulkQueueId] = useState('');
+  const [bulkMsg,setBulkMsg] = useState('');
+  const [bulkRecipients,setBulkRecipients] = useState<BulkRecipient[]>([]);
+  const [bulkSending,setBulkSending] = useState(false);
+  const [bulkDone,setBulkDone] = useState(false);
+  const bulkCancelRef = useRef(false);
   const [inboxSearch,setInboxSearch] = useState('');
   const [inboxQueueFilter,setInboxQueueFilter] = useState('Todos');
   const [sbOpen,setSbOpen] = useState(false);
@@ -248,6 +271,31 @@ export default function InboxPage() {
     } catch { setDispResult('❌ Erro ao conectar. Verifique as chaves de API no Vercel.'); }
     finally { setDispatching(false); }
   };
+
+  const loadBulkFromQueue=(qid:string)=>{
+    setBulkQueueId(qid);
+    setBulkRecipients(qid?leads.filter(l=>l.queue===qid&&l.status!=='Fechado'&&l.status!=='Perdido').map(l=>({phone:l.phone,name:l.name,status:'pendente' as BulkStatus})):[]);
+    setBulkDone(false);
+  };
+  const loadBulkFromText=(raw:string)=>{
+    setBulkRaw(raw);
+    setBulkRecipients(parseBulkList(raw));
+    setBulkDone(false);
+  };
+  const bulkSend=async()=>{
+    if(!bulkMsg.trim()||bulkRecipients.length===0||bulkSending) return;
+    setBulkSending(true); setBulkDone(false); bulkCancelRef.current=false;
+    for(let i=0;i<bulkRecipients.length;i++){
+      if(bulkCancelRef.current) break;
+      const phone=bulkRecipients[i].phone;
+      let ok=false;
+      try { const r=await sendMessageAction(phone,bulkMsg.trim()); ok=!!r.ok; } catch { ok=false; }
+      setBulkRecipients(prev=>prev.map((x,idx)=>idx===i?{...x,status:(ok?'enviado':'falhou') as BulkStatus}:x));
+      await new Promise(res=>setTimeout(res,350));
+    }
+    setBulkSending(false); setBulkDone(true);
+  };
+  const bulkCancel=()=>{ bulkCancelRef.current=true; };
 
   const filteredLeads=leads.filter(l=>{
     if(isPartner && l.queue!==me?.queueId) return false;
@@ -632,6 +680,81 @@ export default function InboxPage() {
                   </div>
                 ))}
               </div>
+            </Card>
+
+            <Card style={{gridColumn:'1 / -1'}}>
+              <SectionTitle label="Disparo em Massa"/>
+              <div style={{display:'flex',gap:6,marginBottom:14}}>
+                <button onClick={()=>{setBulkMode('lista');loadBulkFromText(bulkRaw);}}
+                  style={{flex:1,padding:'8px 0',borderRadius:7,border:`1px solid ${bulkMode==='lista'?C.brandBlue:C.border}`,background:bulkMode==='lista'?C.brandGreenBg:'#fff',color:bulkMode==='lista'?C.brandGreenDark:C.text2,fontWeight:700,fontSize:12,cursor:'pointer'}}>📋 Lista de contatos</button>
+                <button onClick={()=>{setBulkMode('fila');loadBulkFromQueue(bulkQueueId);}}
+                  style={{flex:1,padding:'8px 0',borderRadius:7,border:`1px solid ${bulkMode==='fila'?C.brandBlue:C.border}`,background:bulkMode==='fila'?C.brandGreenBg:'#fff',color:bulkMode==='fila'?C.brandGreenDark:C.text2,fontWeight:700,fontSize:12,cursor:'pointer'}}>🎯 Por fila</button>
+              </div>
+
+              {bulkMode==='lista'?(
+                <>
+                  <Field label="Carregar arquivo (.csv ou .txt)" hint="Uma linha por contato — telefone com DDI, opcionalmente nome separado por vírgula. Ex: 5511999999999,João">
+                    <input type="file" accept=".csv,.txt" onChange={e=>{
+                      const file=e.target.files?.[0]; if(!file) return;
+                      const reader=new FileReader();
+                      reader.onload=ev=>{ loadBulkFromText(String(ev.target?.result||'')); };
+                      reader.readAsText(file);
+                      e.target.value='';
+                    }} style={{fontSize:11.5,color:C.text2}}/>
+                  </Field>
+                  <Field label="Ou cole a lista aqui" hint="Um contato por linha">
+                    <textarea value={bulkRaw} onChange={e=>loadBulkFromText(e.target.value)} rows={4} placeholder={'5511999999999,João\n5521988888888,Maria'}
+                      style={{width:'100%',background:'#f8fafc',border:`1px solid ${C.border}`,borderRadius:7,padding:'8px 10px',fontSize:11.5,color:C.text,outline:'none',resize:'vertical' as const,boxSizing:'border-box' as const,fontFamily:'monospace'}}/>
+                  </Field>
+                </>
+              ):(
+                <Field label="Selecione a fila">
+                  <SelectInput value={bulkQueueId} onChange={loadBulkFromQueue}
+                    options={[{value:'',label:'Selecione...'},...queues.map(q=>({value:q.id,label:q.name}))]}/>
+                </Field>
+              )}
+
+              <Field label="Mensagem *">
+                <textarea value={bulkMsg} onChange={e=>setBulkMsg(e.target.value)} rows={4} placeholder="Digite a mensagem que será enviada para todos os contatos selecionados..."
+                  style={{width:'100%',background:'#f8fafc',border:`1px solid ${C.border}`,borderRadius:7,padding:'8px 10px',fontSize:12,color:C.text,outline:'none',resize:'vertical' as const,boxSizing:'border-box' as const}}/>
+              </Field>
+
+              <div style={{background:'#fffbeb',border:'1px solid #fde68a',borderRadius:8,padding:'8px 12px',fontSize:11,color:'#92400e',marginBottom:12}}>
+                ⚠️ O WhatsApp só permite texto livre para contatos que falaram com você nas últimas 24h. Fora desse prazo, a Meta exige um template aprovado — o envio pode falhar para esses números.
+              </div>
+
+              {bulkRecipients.length>0&&(
+                <div style={{border:`1px solid ${C.border}`,borderRadius:8,marginBottom:12,maxHeight:200,overflowY:'auto' as const}}>
+                  {bulkRecipients.map((r,i)=>(
+                    <div key={r.phone+i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 10px',borderTop:i?`1px solid #f1f5f9`:'none'}}>
+                      <div>
+                        <span style={{fontSize:11.5,fontWeight:600,color:C.text}}>{r.name||'(sem nome)'}</span>
+                        <span style={{fontSize:10.5,color:C.text3,marginLeft:6,fontFamily:'monospace'}}>{r.phone}</span>
+                      </div>
+                      <span style={{fontSize:10,fontWeight:700,padding:'1px 7px',borderRadius:4,
+                        background:r.status==='enviado'?'#f0fdf4':r.status==='falhou'?'#fef2f2':'#f1f5f9',
+                        color:r.status==='enviado'?C.green:r.status==='falhou'?C.red:C.text3}}>
+                        {r.status==='enviado'?'Enviado':r.status==='falhou'?'Falhou':'Pendente'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <Btn
+                  label={bulkSending?`Enviando... (${bulkRecipients.filter(r=>r.status!=='pendente').length}/${bulkRecipients.length})`:`Enviar para ${bulkRecipients.length} contato(s)`}
+                  onClick={bulkSend}
+                  full={!bulkSending}
+                  color={(!bulkMsg.trim()||bulkRecipients.length===0||bulkSending)?C.text3:undefined}
+                />
+                {bulkSending&&<Btn label="Cancelar" onClick={bulkCancel} variant="ghost"/>}
+              </div>
+              {bulkDone&&!bulkSending&&(
+                <div style={{marginTop:10,padding:'8px 12px',background:'#f0fdf4',borderRadius:7,fontSize:12,color:C.green,fontWeight:600}}>
+                  ✅ Concluído: {bulkRecipients.filter(r=>r.status==='enviado').length} enviados, {bulkRecipients.filter(r=>r.status==='falhou').length} falharam.
+                </div>
+              )}
             </Card>
           </div>
         )}
