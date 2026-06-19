@@ -408,20 +408,20 @@ export default function InboxPage() {
                     <div style={{width:30,height:30,borderRadius:8,background:q.color,flexShrink:0}}/>
                     <div style={{flex:1}}>
                       <div style={{fontSize:13,fontWeight:700,color:C.text}}>{q.name}</div>
-                       <div style={{fontSize:11,color:C.text3}}>{leads.filter(l=>l.queue===q.id).length} leads</div>
+                      <div style={{fontSize:11,color:C.text3}}>{leads.filter(l=>l.queue===q.id).length} leads</div>
                     </div>
                   </div>
                   <div style={{display:'flex',gap:6}}>
                     <button onClick={()=>setQueueForm(q)} style={{flex:1,background:'#eff6ff',color:C.accent,border:`1px solid ${C.accent}`,borderRadius:6,padding:'5px',fontSize:11,cursor:'pointer',fontWeight:600}}>Renomear / Editar</button>
                     <button onClick={()=>{if(confirm(`Excluir fila "${q.name}"?`))setQueues(p=>p.filter(x=>x.id!==q.id));}} style={{background:'#fef2f2',color:C.red,border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,cursor:'pointer',fontWeight:600}}>✕</button>
                   </div>
-                 </Card>
+                </Card>
               ))}
             </div>
           </div>
         )}
 
-        {/* IZԀ─ TREINAR IA ── */}
+        {/* ── TREINAR IA ── */}
         {screen==='ai'&&(
           <div style={{flex:1,overflowY:'auto' as const,padding:14,display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,alignContent:'start' as const}}>
             <Card>
@@ -455,7 +455,7 @@ export default function InboxPage() {
                   </div>
                 </div>
               ))}
-              <button onClick={()=>setAiRuleForm({})} style={{width:'100%',background:'#eff6ff',color:C.accent,border:`1px dashed ${C.accent}`,borderRadius:7,podding:8,fontSize:12,fontWeight:600,cursor:'pointer',marginTop:4}}>+ Adicionar Regra</button>
+              <button onClick={()=>setAiRuleForm({})} style={{width:'100%',background:'#eff6ff',color:C.accent,border:`1px dashed ${C.accent}`,borderRadius:7,padding:8,fontSize:12,fontWeight:600,cursor:'pointer',marginTop:4}}>+ Adicionar Regra</button>
             </Card>
           </div>
         )}
@@ -482,7 +482,7 @@ export default function InboxPage() {
                 {leads.length===0&&<p style={{fontSize:12,color:C.text3}}>Nenhum lead cadastrado.</p>}
                 {leads.filter(l=>l.status!=='Fechado'&&l.status!=='Perdido').map(l=>(
                   <div key={l.id} onClick={()=>setDispPhone(l.phone)}
-                      style={{padding:'8px 10px',b�ackground:dispPhone===l.phone?'#eff6ff':'#f8fafc',border:`1px solid ${dispPhone===l.phone?C.accent:C.border}`,borderRadius:7,marginBottom:6,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    style={{padding:'8px 10px',background:dispPhone===l.phone?'#eff6ff':'#f8fafc',border:`1px solid ${dispPhone===l.phone?C.accent:C.border}`,borderRadius:7,marginBottom:6,cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                     <div>
                       <div style={{fontSize:12,fontWeight:600,color:C.text}}>{l.name}</div>
                       <div style={{fontSize:11,color:C.text3,fontFamily:'monospace'}}>{l.phone}</div>
@@ -529,7 +529,7 @@ export default function InboxPage() {
                 </div>
               </Card>
             </div>
-  2       </div>
+          </div>
         )}
 
       </div>
@@ -541,7 +541,7 @@ export default function InboxPage() {
           <Field label="Telefone * (com DDI, sem espaços)" hint="Ex: 5511999999999"><TextInput value={leadForm.phone||''} onChange={v=>setLeadForm(p=>({...p,phone:v}))} placeholder="5511999999999" mono/></Field>
           <Field label="CPF"><TextInput value={leadForm.cpf||''} onChange={v=>setLeadForm(p=>({...p,cpf:v}))} placeholder="000.000.000-00"/></Field>
           <Field label="Fila">
- 2          <SelectInput value={leadForm.queue||''} onChange={v=>setLeadForm(p=>({...p,queue:v}))}
+            <SelectInput value={leadForm.queue||''} onChange={v=>setLeadForm(p=>({...p,queue:v}))}
               options={[{value:'',label:'Selecione a fila...'},...queues.map(q=>({value:q.id,label:q.name}))]}/>
           </Field>
           <Field label="Status">
